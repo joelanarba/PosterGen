@@ -47,16 +47,25 @@ export function PosterGrid({ posters }: PosterGridProps) {
             />
           </div>
 
-          {/* Overlay on hover */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+          {/* Text Overlay - Always visible to simulate poster text */}
+          <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/60 via-transparent to-transparent p-6">
+            <div className="space-y-1 text-center">
+              <p className="text-xs font-medium uppercase tracking-wider text-white/90 drop-shadow-md">
+                {poster.eventType}
+              </p>
+              <h3 className="font-heading text-2xl font-bold leading-tight text-white drop-shadow-lg">
+                {poster.title}
+              </h3>
+              {/* We could add date/venue here if we saved it in the poster object */}
+            </div>
+          </div>
 
-          {/* Content */}
+          {/* Hover Actions Overlay */}
+          <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover:opacity-100" />
+
+          {/* Content for Hover State (Date/Details) */}
           <div className="absolute bottom-0 left-0 right-0 p-4 text-white opacity-0 transition-opacity group-hover:opacity-100">
-            <Badge variant="secondary" className="mb-2">
-              {poster.eventType}
-            </Badge>
-            <h3 className="font-semibold">{poster.title}</h3>
-            <p className="text-sm text-white/80">{new Date(poster.createdAt).toLocaleDateString()}</p>
+             <p className="text-xs text-white/80 text-center">Created: {new Date(poster.createdAt).toLocaleDateString()}</p>
           </div>
 
           {/* Actions */}

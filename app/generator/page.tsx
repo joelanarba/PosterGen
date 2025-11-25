@@ -329,7 +329,7 @@ export default function GeneratorPage() {
                 <CardDescription>Your AI-generated poster will appear here</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="aspect-[3/4] overflow-hidden rounded-lg bg-muted">
+                <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-muted">
                   {isGenerating ? (
                     <div className="flex h-full flex-col items-center justify-center gap-4">
                       <div className="relative">
@@ -342,11 +342,30 @@ export default function GeneratorPage() {
                       </div>
                     </div>
                   ) : generatedPoster ? (
-                    <img
-                      src={generatedPoster || "/placeholder.svg"}
-                      alt="Generated poster"
-                      className="h-full w-full object-cover"
-                    />
+                    <>
+                      <img
+                        src={generatedPoster || "/placeholder.svg"}
+                        alt="Generated poster"
+                        className="h-full w-full object-cover"
+                      />
+                      {/* Text Overlay */}
+                      <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/60 via-transparent to-transparent p-8">
+                        <div className="space-y-2 text-center">
+                          <p className="text-sm font-medium uppercase tracking-wider text-white/90 drop-shadow-md">
+                            {eventType}
+                          </p>
+                          <h3 className="font-heading text-3xl font-bold leading-tight text-white drop-shadow-lg">
+                            {title}
+                          </h3>
+                          {(eventDate || venue) && (
+                            <div className="mt-2 flex flex-col items-center gap-1 text-sm text-white/90 drop-shadow-md">
+                              {eventDate && <span>{new Date(eventDate).toLocaleDateString()}</span>}
+                              {venue && <span>• {venue}</span>}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
                       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted-foreground/10">
