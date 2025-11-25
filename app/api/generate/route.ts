@@ -66,14 +66,16 @@ export async function POST(request: Request) {
       const { HfInference } = await import("@huggingface/inference")
       const hf = new HfInference(apiKey)
 
-      const prompt = `Design a ${style} poster for a ${eventType} titled "${title}". ${description || query}. High quality, professional graphic design, no text spelling errors, 8k resolution, highly detailed.`
+      // We explicitly ask for NO text because SDXL struggles with text.
+      // We rely on our CSS overlay for the typography.
+      const prompt = `background art for a ${style} poster about ${eventType}, ${description || query}. minimalistic, high quality, professional graphic design, 8k resolution, highly detailed, clean composition, negative space for text.`
 
       // Use SDXL for high quality free generation
       const imageBlob = await hf.textToImage({
         model: "stabilityai/stable-diffusion-xl-base-1.0",
         inputs: prompt,
         parameters: {
-          negative_prompt: "blurry, low quality, text errors, distorted, ugly, bad anatomy",
+          negative_prompt: "text, letters, typography, words, writing, watermark, signature, blurry, low quality, distorted, ugly, bad anatomy, busy, cluttered",
         }
       })
 
@@ -82,7 +84,9 @@ export async function POST(request: Request) {
       const fileName = `posters/${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.png`
       const file = bucket.file(fileName)
       
-      const arrayBuffer = await imageBlob.arrayBuffer()
+      // Cast to any first to avoid TS issues if types are mismatched in this environment
+      const blob = imageBlob as unknown as Blob
+      const arrayBuffer = await blob.arrayBuffer()
       const buffer = Buffer.from(arrayBuffer)
       
       await file.save(buffer, {
