@@ -39,10 +39,14 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setIsSaving(true)
-    await new Promise((resolve) => setTimeout(resolve, 500))
-    updateUser({ name })
-    toast.success("Profile updated")
-    setIsSaving(false)
+    try {
+      await updateUser({ name })
+      toast.success("Profile updated")
+    } catch (error) {
+      toast.error("Failed to update profile")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const planDetails = {

@@ -13,8 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { useAuth } from "@/lib/auth-context"
-import { usePosterStorage } from "@/lib/poster-storage"
-import { Sparkles, Loader2, Download, RefreshCw, Wand2, ArrowLeft } from "lucide-react"
+import { Sparkles, Loader2, RefreshCw, Wand2, ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 
 const eventTypes = [
@@ -66,8 +65,7 @@ const getGeneratedPosterUrl = (eventType: string, style: string) => {
 }
 
 export default function GeneratorPage() {
-  const { user, isLoading: authLoading, updateUser } = useAuth()
-  const { addPoster } = usePosterStorage()
+  const { user, firebaseUser, isLoading: authLoading, updateUser } = useAuth()
   const router = useRouter()
 
   const [title, setTitle] = useState("")
@@ -108,41 +106,50 @@ export default function GeneratorPage() {
     }
 
     setIsGenerating(true)
+    setGeneratedPoster(null)
 
-    // Simulate AI generation delay
-    await new Promise((resolve) => setTimeout(resolve, 2500))
+    try {
+      if (!firebaseUser) throw new Error("Not authenticated")
+      const token = await firebaseUser.getIdToken()
 
-    const posterUrl = getGeneratedPosterUrl(eventType, selectedStyle)
-    setGeneratedPoster(posterUrl)
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title,
+          description,
+          eventType,
+          style: selectedStyle,
+          size: selectedSize,
+        }),
+      })
 
-    // Deduct credit for free users
-    if (user.plan === "free") {
-      updateUser({ credits: user.credits - 1 })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Generation failed")
+      }
+
+      setGeneratedPoster(data.imageUrl)
+      toast.success("Poster generated and saved!")
+      
+      // Update local user credits if returned
+      if (data.creditsRemaining !== undefined && data.creditsRemaining !== "unlimited") {
+        updateUser({ credits: data.creditsRemaining })
+      }
+
+    } catch (error: any) {
+      console.error("Generation error:", error)
+      toast.error(error.message || "Failed to generate poster")
+    } finally {
+      setIsGenerating(false)
     }
-
-    toast.success("Poster generated successfully!")
-    setIsGenerating(false)
-  }
-
-  const handleSave = () => {
-    if (!generatedPoster) return
-
-    addPoster({
-      userId: user.id,
-      title,
-      description,
-      eventType,
-      imageUrl: generatedPoster,
-      style: selectedStyle,
-      size: selectedSize,
-    })
-
-    toast.success("Poster saved to your library!")
-    router.push("/dashboard")
   }
 
   const handleRegenerate = () => {
-    setGeneratedPoster(null)
     handleGenerate()
   }
 
@@ -355,13 +362,15 @@ export default function GeneratorPage() {
 
                 {generatedPoster && !isGenerating && (
                   <div className="mt-4 flex gap-2">
-                    <Button className="flex-1 gap-2" onClick={handleSave}>
-                      <Download className="h-4 w-4" />
-                      Save Poster
+                    <Button className="flex-1 gap-2" asChild>
+                      <Link href="/dashboard">
+                        <ArrowLeft className="h-4 w-4" />
+                        Back to Dashboard
+                      </Link>
                     </Button>
                     <Button variant="outline" className="gap-2 bg-transparent" onClick={handleRegenerate}>
                       <RefreshCw className="h-4 w-4" />
-                      Regenerate
+                      Generate Another
                     </Button>
                   </div>
                 )}

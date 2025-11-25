@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user is accessing their own data
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users can read their own data
+    // Users can only update specific fields (name, avatar)
+    // Users cannot update credits, plan, totalGenerations directly
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) 
+        && request.resource.data.keys().hasAll(['email', 'name', 'plan', 'credits'])
+        && request.resource.data.plan == 'free'
+        && request.resource.data.credits == 5;
+      allow update: if isOwner(userId) 
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['credits', 'plan', 'totalGenerations', 'stripeCustomerId']));
+    }
+    
+    // Users can read/write only their own posters
+    match /posters/{posterId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid);
+      // Only allow creation via API (which uses Admin SDK) or if we strictly validate
+      // Actually, we moved generation to API, so client doesn't need create permission for posters!
+      // But wait, what about "Save" if we had that? 
+      // The API saves the poster. So client strictly needs READ access.
+      // However, for "delete", client might need write access.
+      allow create: if false; // Creation happens via API
+      allow update: if false; // Updates happen via API
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Templates are read-only for all authenticated users
+    match /templates/{templateId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+  }
+}
