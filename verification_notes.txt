@@ -1,0 +1,26 @@
+
+const fetch = require('node-fetch'); // Assuming node-fetch is available or using native fetch in Node 18+
+
+// Configuration
+const BASE_URL = 'http://localhost:3000';
+// We need a way to get a valid ID token. 
+// Since we can't easily login via script without a UI or using the Admin SDK to mint a custom token,
+// we might need to use the Admin SDK to set the flag directly for verification, 
+// OR we can ask the user to click a button.
+
+// Actually, for verification in this environment, I can just use the Admin SDK directly in a script 
+// to set the flag and then call the generate API with a mock token if I can mint one, 
+// OR I can just inspect the code and trust it, but "Verify" means running it.
+
+// Let's create a script that uses the Firebase Admin SDK to:
+// 1. Get a user (or create a test one).
+// 2. Set isAdmin = true.
+// 3. Verify the field is set.
+// 4. (Optional) We can't easily call the Next.js API from a standalone script without a valid ID token signed by Firebase.
+//    But we CAN verify the database update worked.
+
+const admin = require('firebase-admin');
+const serviceAccount = require('./service-account.json'); // We'd need this, which we don't have easily accessible as a file, it's in env vars.
+
+// Alternative: Create a temporary page in the app that has a "Promote Me" button and a "Test Gen" button.
+// This is better because it uses the real auth flow.

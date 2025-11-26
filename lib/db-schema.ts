@@ -18,6 +18,7 @@ export interface User {
   updatedAt: Timestamp
   stripeCustomerId?: string
   emailVerified: boolean
+  isAdmin?: boolean
 }
 
 export interface Poster {

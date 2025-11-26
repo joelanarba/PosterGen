@@ -33,8 +33,9 @@ export async function POST(request: Request) {
     const userData = userDoc.data()
     const isFreePlan = userData?.plan === "free"
     const credits = userData?.credits || 0
+    const isAdmin = userData?.isAdmin === true
 
-    if (isFreePlan && credits <= 0) {
+    if (!isAdmin && isFreePlan && credits <= 0) {
       return NextResponse.json({ error: "Insufficient credits" }, { status: 403 })
     }
 
@@ -71,13 +72,19 @@ export async function POST(request: Request) {
       const prompt = `background art for a ${style} poster about ${eventType}, ${description || query}. minimalistic, high quality, professional graphic design, 8k resolution, highly detailed, clean composition, negative space for text.`
 
       // Use SDXL for high quality free generation
-      const imageBlob = await hf.textToImage({
-        model: "stabilityai/stable-diffusion-xl-base-1.0",
-        inputs: prompt,
-        parameters: {
-          negative_prompt: "text, letters, typography, words, writing, watermark, signature, blurry, low quality, distorted, ugly, bad anatomy, busy, cluttered",
-        }
-      })
+      let imageBlob: any;
+      try {
+        imageBlob = await hf.textToImage({
+          model: "stabilityai/stable-diffusion-xl-base-1.0",
+          inputs: prompt,
+          parameters: {
+            negative_prompt: "text, letters, typography, words, writing, watermark, signature, blurry, low quality, distorted, ugly, bad anatomy, busy, cluttered",
+          }
+        })
+      } catch (hfError: any) {
+        console.error("Hugging Face API Error:", hfError)
+        return NextResponse.json({ error: `AI Generation Failed: ${hfError.message}` }, { status: 502 })
+      }
 
       // 5. Upload to Firebase Storage
       const bucket = adminStorage.bucket(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET)
@@ -105,8 +112,8 @@ export async function POST(request: Request) {
       imageUrl = `https://placehold.co/1080x1920/png?text=${encodeURIComponent(title)}`
     }
 
-    // 6. Deduct Credits (if free plan)
-    if (isFreePlan) {
+    // 6. Deduct Credits (if free plan and not admin)
+    if (!isAdmin && isFreePlan) {
       await userRef.update({
         credits: FieldValue.increment(-1),
         totalGenerations: FieldValue.increment(1)
@@ -145,7 +152,7 @@ export async function POST(request: Request) {
       success: true, 
       posterId: posterRef.id, 
       imageUrl,
-      creditsRemaining: isFreePlan ? credits - 1 : "unlimited"
+      creditsRemaining: isAdmin ? "unlimited" : (isFreePlan ? credits - 1 : "unlimited")
     })
 
   } catch (error: any) {

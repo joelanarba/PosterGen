@@ -1,8 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { useDropzone } from "react-dropzone"
+import ColorThief from "colorthief"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,16 +12,16 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { useAuth } from "@/lib/auth-context"
-import { Sparkles, Loader2, RefreshCw, Wand2, ArrowLeft } from "lucide-react"
+import { Sparkles, Loader2, RefreshCw, Wand2, ArrowLeft, Upload, Image as ImageIcon, Palette } from "lucide-react"
 import { toast } from "sonner"
 
-const eventTypes = [
+const designCategories = [
   "Church Service",
   "Wedding",
-  "Birthday Party",
+  "Birthday Wish",
+  "Political Campaign",
   "Business Conference",
   "Funeral/Memorial",
   "Seminar/Workshop",
@@ -27,56 +29,34 @@ const eventTypes = [
   "Charity Event",
   "Sports Event",
   "Holiday Celebration",
+  "Quote/Announcement",
+  "Product Advertisement"
 ]
-
-const styles = [
-  { id: "modern", label: "Modern & Clean", preview: "/modern-minimal-poster-design.jpg" },
-  { id: "elegant", label: "Elegant & Classic", preview: "/elegant-classic-poster-design.jpg" },
-  { id: "vibrant", label: "Vibrant & Bold", preview: "/vibrant-colorful-poster-design.jpg" },
-  { id: "minimal", label: "Minimalist", preview: "/minimalist-poster-design.jpg" },
-  { id: "playful", label: "Playful & Fun", preview: "/playful-fun-poster-design.jpg" },
-  { id: "professional", label: "Professional", preview: "/professional-corporate-poster-design.jpg" },
-]
-
-const sizes = [
-  { id: "poster", label: "Poster (A3)", dimensions: "297 × 420 mm" },
-  { id: "flyer", label: "Flyer (A5)", dimensions: "148 × 210 mm" },
-  { id: "social", label: "Social Media", dimensions: "1080 × 1080 px" },
-  { id: "story", label: "Story/Reel", dimensions: "1080 × 1920 px" },
-  { id: "banner", label: "Banner", dimensions: "1200 × 628 px" },
-]
-
-// Simulated poster images based on event type
-const getGeneratedPosterUrl = (eventType: string, style: string) => {
-  const queries: Record<string, string> = {
-    "Church Service": "elegant church service poster with cross and light rays",
-    Wedding: "romantic wedding invitation with floral elements gold accents",
-    "Birthday Party": "colorful birthday celebration poster with balloons confetti",
-    "Business Conference": "professional corporate conference poster modern design",
-    "Funeral/Memorial": "peaceful memorial service poster soft blue tones dove",
-    "Seminar/Workshop": "educational seminar poster professional clean layout",
-    "Concert/Music Event": "dynamic concert poster with music notes stage lights",
-    "Charity Event": "heartfelt charity event poster community helping hands",
-    "Sports Event": "energetic sports event poster dynamic action theme",
-    "Holiday Celebration": "festive holiday celebration poster seasonal decorations",
-  }
-  const query = queries[eventType] || "professional event poster design"
-  return `/placeholder.svg?height=600&width=450&query=${encodeURIComponent(query + " " + style + " style")}`
-}
 
 export default function GeneratorPage() {
   const { user, firebaseUser, isLoading: authLoading, updateUser } = useAuth()
   const router = useRouter()
 
+  // Form State
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [eventType, setEventType] = useState("")
+  const [category, setCategory] = useState("")
   const [eventDate, setEventDate] = useState("")
   const [venue, setVenue] = useState("")
-  const [selectedStyle, setSelectedStyle] = useState("modern")
-  const [selectedSize, setSelectedSize] = useState("poster")
+  
+  // Asset State
+  const [subjectImage, setSubjectImage] = useState<string | null>(null)
+  const [logoImage, setLogoImage] = useState<string | null>(null)
+  const [extractedColors, setExtractedColors] = useState<string[]>([])
+  const [manualColor, setManualColor] = useState("#000000")
+  
+  // Design State
+  const [layout, setLayout] = useState("center")
+  const [imageStyle, setImageStyle] = useState("fade")
+  
+  // Generation State
   const [isGenerating, setIsGenerating] = useState(false)
-  const [generatedPoster, setGeneratedPoster] = useState<string | null>(null)
+  const [generatedBackground, setGeneratedBackground] = useState<string | null>(null)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -84,19 +64,69 @@ export default function GeneratorPage() {
     }
   }, [user, authLoading, router])
 
-  if (authLoading || !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    )
+  // Color Extraction Logic
+  const extractColors = (imageUrl: string) => {
+    const img = new Image()
+    img.crossOrigin = "Anonymous"
+    img.src = imageUrl
+    img.onload = () => {
+      try {
+        const colorThief = new ColorThief()
+        const palette = colorThief.getPalette(img, 3)
+        if (palette) {
+          const hexColors = palette.map((rgb: number[]) => 
+            `#${rgb.map(x => x.toString(16).padStart(2, '0')).join('')}`
+          )
+          setExtractedColors(hexColors)
+          toast.success("Colors extracted!")
+        }
+      } catch (error) {
+        console.error("Color extraction failed:", error)
+      }
+    }
   }
 
-  const canGenerate = user.plan !== "free" || user.credits > 0
+  // Dropzone for Subject Image
+  const onDropSubject = (acceptedFiles: File[]) => {
+    const file = acceptedFiles[0]
+    if (file) {
+      const url = URL.createObjectURL(file)
+      setSubjectImage(url)
+      // Only extract from subject if no logo is present
+      if (!logoImage) {
+        extractColors(url)
+      }
+    }
+  }
+
+  const { getRootProps: getSubjectProps, getInputProps: getSubjectInputProps } = useDropzone({
+    onDrop: onDropSubject,
+    accept: { 'image/*': [] },
+    maxFiles: 1
+  })
+
+  // Dropzone for Logo
+  const onDropLogo = (acceptedFiles: File[]) => {
+    const file = acceptedFiles[0]
+    if (file) {
+      const url = URL.createObjectURL(file)
+      setLogoImage(url)
+      // Always prioritize logo for colors
+      extractColors(url)
+    }
+  }
+
+  const { getRootProps: getLogoProps, getInputProps: getLogoInputProps } = useDropzone({
+    onDrop: onDropLogo,
+    accept: { 'image/*': [] },
+    maxFiles: 1
+  })
+
+  const canGenerate = user?.plan !== "free" || (user?.credits || 0) > 0
 
   const handleGenerate = async () => {
-    if (!title || !eventType) {
-      toast.error("Please fill in the event title and type")
+    if (!title || !category) {
+      toast.error("Please fill in the title and category")
       return
     }
 
@@ -106,11 +136,17 @@ export default function GeneratorPage() {
     }
 
     setIsGenerating(true)
-    setGeneratedPoster(null)
+    setGeneratedBackground(null)
 
     try {
       if (!firebaseUser) throw new Error("Not authenticated")
       const token = await firebaseUser.getIdToken()
+
+      // Construct prompt based on extracted colors if available
+      let colorPrompt = ""
+      if (extractedColors.length > 0) {
+        colorPrompt = `color palette: ${extractedColors.join(", ")}`
+      }
 
       const response = await fetch("/api/generate", {
         method: "POST",
@@ -120,12 +156,20 @@ export default function GeneratorPage() {
         },
         body: JSON.stringify({
           title,
-          description,
-          eventType,
-          style: selectedStyle,
-          size: selectedSize,
+          description: `${description}. ${colorPrompt}`, // Inject colors into prompt
+          eventType: category,
+          style: "modern", // Default style for now
+          size: "poster",
         }),
       })
+
+      // Check content type to avoid parsing HTML error pages as JSON
+      const contentType = response.headers.get("content-type")
+      if (!contentType || !contentType.includes("application/json")) {
+         const text = await response.text()
+         console.error("API Error (Non-JSON):", text)
+         throw new Error("Server error. Please check logs.")
+      }
 
       const data = await response.json()
 
@@ -133,10 +177,9 @@ export default function GeneratorPage() {
         throw new Error(data.error || "Generation failed")
       }
 
-      setGeneratedPoster(data.imageUrl)
-      toast.success("Poster generated and saved!")
+      setGeneratedBackground(data.imageUrl)
+      toast.success("Background generated!")
       
-      // Update local user credits if returned
       if (data.creditsRemaining !== undefined && data.creditsRemaining !== "unlimited") {
         updateUser({ credits: data.creditsRemaining })
       }
@@ -149,8 +192,12 @@ export default function GeneratorPage() {
     }
   }
 
-  const handleRegenerate = () => {
-    handleGenerate()
+  if (authLoading || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    )
   }
 
   return (
@@ -165,53 +212,114 @@ export default function GeneratorPage() {
             </Link>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Create New Poster</h1>
-            <p className="text-muted-foreground">Generate a stunning poster with AI</p>
+            <h1 className="text-2xl font-bold">Smart Design Studio</h1>
+            <p className="text-muted-foreground">Upload your photos and let AI design around them</p>
           </div>
         </div>
 
         <div className="grid gap-8 lg:grid-cols-2">
-          {/* Left: Form */}
+          {/* Left: Controls */}
           <div className="space-y-6">
-            {/* Credits indicator */}
-            {user.plan === "free" && (
-              <Card className="border-primary/50 bg-primary/5">
-                <CardContent className="flex items-center justify-between p-4">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-primary" />
-                    <span className="font-medium">{user.credits} credits remaining</span>
-                  </div>
-                  <Button size="sm" variant="outline" asChild>
-                    <Link href="/pricing">Get More</Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
+            
+            {/* 1. Upload Assets */}
             <Card>
               <CardHeader>
-                <CardTitle>Event Details</CardTitle>
-                <CardDescription>Tell us about your event</CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <Upload className="h-5 w-5" />
+                  1. Upload Assets
+                </CardTitle>
+                <CardDescription>Upload your subject photo and logo</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Subject Image Upload */}
+                <div>
+                  <Label className="mb-2 block">Subject Image (Person/Product)</Label>
+                  <div 
+                    {...getSubjectProps()} 
+                    className={`cursor-pointer rounded-lg border-2 border-dashed p-4 text-center transition-colors ${subjectImage ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'}`}
+                  >
+                    <input {...getSubjectInputProps()} />
+                    {subjectImage ? (
+                      <div className="relative h-32 w-full overflow-hidden rounded-md">
+                        <img src={subjectImage} alt="Subject" className="h-full w-full object-contain" />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity hover:opacity-100">
+                          <p className="text-sm font-medium text-white">Change Image</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 py-4">
+                        <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">Drag & drop or click to upload</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Logo Upload */}
+                <div>
+                  <Label className="mb-2 block">Logo (Optional - Prioritized for Colors)</Label>
+                  <div 
+                    {...getLogoProps()} 
+                    className={`cursor-pointer rounded-lg border-2 border-dashed p-4 text-center transition-colors ${logoImage ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'}`}
+                  >
+                    <input {...getLogoInputProps()} />
+                    {logoImage ? (
+                      <div className="relative h-16 w-full overflow-hidden rounded-md">
+                        <img src={logoImage} alt="Logo" className="h-full w-full object-contain" />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2 py-2">
+                        <Upload className="h-4 w-4 text-muted-foreground" />
+                        <p className="text-xs text-muted-foreground">Upload Logo</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Extracted Colors */}
+                {extractedColors.length > 0 && (
+                  <div className="flex items-center gap-2 rounded-lg border p-3">
+                    <Palette className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Palette:</span>
+                    <div className="flex gap-2">
+                      {extractedColors.map((color, i) => (
+                        <div 
+                          key={i} 
+                          className="h-6 w-6 rounded-full border border-border shadow-sm" 
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 2. Design Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle>2. Design Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="title">Event Title *</Label>
+                  <Label htmlFor="title">Main Title *</Label>
                   <Input
                     id="title"
-                    placeholder="e.g., Annual Youth Conference 2025"
+                    placeholder="e.g., Happy Birthday, Vote for Joel"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="eventType">Event Type *</Label>
-                  <Select value={eventType} onValueChange={setEventType}>
+                  <Label htmlFor="category">Category *</Label>
+                  <Select value={category} onValueChange={setCategory}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select event type" />
+                      <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {eventTypes.map((type) => (
+                      {designCategories.map((type) => (
                         <SelectItem key={type} value={type}>
                           {type}
                         </SelectItem>
@@ -222,14 +330,14 @@ export default function GeneratorPage() {
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="date">Event Date</Label>
+                    <Label htmlFor="date">Date (Optional)</Label>
                     <Input id="date" type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="venue">Venue</Label>
+                    <Label htmlFor="venue">Venue / Subtitle (Optional)</Label>
                     <Input
                       id="venue"
-                      placeholder="e.g., City Convention Center"
+                      placeholder="e.g., City Hall OR 'Age 25'"
                       value={venue}
                       onChange={(e) => setVenue(e.target.value)}
                     />
@@ -240,69 +348,52 @@ export default function GeneratorPage() {
                   <Label htmlFor="description">Additional Details</Label>
                   <Textarea
                     id="description"
-                    placeholder="Add any specific details, speakers, theme, colors you want..."
+                    placeholder="Theme, special guests, specific wishes..."
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    rows={3}
+                    rows={2}
                   />
                 </div>
               </CardContent>
             </Card>
 
+            {/* 3. Layout & Style */}
             <Card>
               <CardHeader>
-                <CardTitle>Design Options</CardTitle>
-                <CardDescription>Choose your poster style and size</CardDescription>
+                <CardTitle>3. Layout & Style</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-6">
-                <Tabs defaultValue="style">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="style">Style</TabsTrigger>
-                    <TabsTrigger value="size">Size</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="style" className="mt-4">
-                    <div className="grid grid-cols-3 gap-3">
-                      {styles.map((style) => (
-                        <button
-                          key={style.id}
-                          onClick={() => setSelectedStyle(style.id)}
-                          className={`overflow-hidden rounded-lg border-2 p-2 transition-all ${
-                            selectedStyle === style.id
-                              ? "border-primary bg-primary/5"
-                              : "border-border hover:border-primary/50"
-                          }`}
-                        >
-                          <div className="aspect-[4/5] overflow-hidden rounded bg-muted">
-                            <img
-                              src={style.preview || "/placeholder.svg"}
-                              alt={style.label}
-                              className="h-full w-full object-cover"
-                            />
-                          </div>
-                          <p className="mt-2 text-xs font-medium">{style.label}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </TabsContent>
-                  <TabsContent value="size" className="mt-4">
-                    <div className="grid gap-2">
-                      {sizes.map((size) => (
-                        <button
-                          key={size.id}
-                          onClick={() => setSelectedSize(size.id)}
-                          className={`flex items-center justify-between rounded-lg border-2 p-4 text-left transition-all ${
-                            selectedSize === size.id
-                              ? "border-primary bg-primary/5"
-                              : "border-border hover:border-primary/50"
-                          }`}
-                        >
-                          <span className="font-medium">{size.label}</span>
-                          <Badge variant="secondary">{size.dimensions}</Badge>
-                        </button>
-                      ))}
-                    </div>
-                  </TabsContent>
-                </Tabs>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Composition Layout</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {['center', 'left', 'right'].map((l) => (
+                      <Button
+                        key={l}
+                        variant={layout === l ? "default" : "outline"}
+                        className="capitalize"
+                        onClick={() => setLayout(l)}
+                      >
+                        {l}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Image Blending</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {['none', 'fade', 'circle'].map((s) => (
+                      <Button
+                        key={s}
+                        variant={imageStyle === s ? "default" : "outline"}
+                        className="capitalize"
+                        onClick={() => setImageStyle(s)}
+                      >
+                        {s}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -310,89 +401,106 @@ export default function GeneratorPage() {
               {isGenerating ? (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin" />
-                  Generating...
+                  Generating Background...
                 </>
               ) : (
                 <>
                   <Wand2 className="h-5 w-5" />
-                  Generate Poster
+                  Generate Design
                 </>
               )}
             </Button>
           </div>
 
-          {/* Right: Preview */}
+          {/* Right: Smart Preview */}
           <div className="lg:sticky lg:top-24 lg:self-start">
             <Card className="overflow-hidden">
               <CardHeader>
-                <CardTitle>Preview</CardTitle>
-                <CardDescription>Your AI-generated poster will appear here</CardDescription>
+                <CardTitle>Live Preview</CardTitle>
+                <CardDescription>Smart composite of your assets and AI background</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-muted">
-                  {isGenerating ? (
-                    <div className="flex h-full flex-col items-center justify-center gap-4">
-                      <div className="relative">
-                        <div className="h-16 w-16 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
-                        <Sparkles className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-primary" />
-                      </div>
-                      <div className="text-center">
-                        <p className="font-medium">Creating your poster...</p>
-                        <p className="text-sm text-muted-foreground">This usually takes a few seconds</p>
-                      </div>
-                    </div>
-                  ) : generatedPoster ? (
-                    <>
-                      <img
-                        src={generatedPoster || "/placeholder.svg"}
-                        alt="Generated poster"
-                        className="h-full w-full object-cover"
-                      />
-                      {/* Text Overlay */}
-                      <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/60 via-transparent to-transparent p-8">
-                        <div className="space-y-2 text-center">
-                          <p className="text-sm font-medium uppercase tracking-wider text-white/90 drop-shadow-md">
-                            {eventType}
-                          </p>
-                          <h3 className="font-heading text-3xl font-bold leading-tight text-white drop-shadow-lg">
-                            {title}
-                          </h3>
-                          {(eventDate || venue) && (
-                            <div className="mt-2 flex flex-col items-center gap-1 text-sm text-white/90 drop-shadow-md">
-                              {eventDate && <span>{new Date(eventDate).toLocaleDateString()}</span>}
-                              {venue && <span>• {venue}</span>}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </>
+                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-muted shadow-2xl">
+                  {/* Layer 1: AI Background */}
+                  {generatedBackground ? (
+                    <img
+                      src={generatedBackground}
+                      alt="Background"
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
                   ) : (
-                    <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
-                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted-foreground/10">
-                        <Sparkles className="h-8 w-8 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <p className="font-medium">No poster yet</p>
-                        <p className="text-sm text-muted-foreground">Fill in the details and click Generate</p>
-                      </div>
+                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+                      <p className="text-sm text-muted-foreground">AI Background will appear here</p>
                     </div>
                   )}
-                </div>
 
-                {generatedPoster && !isGenerating && (
-                  <div className="mt-4 flex gap-2">
-                    <Button className="flex-1 gap-2" asChild>
-                      <Link href="/dashboard">
-                        <ArrowLeft className="h-4 w-4" />
-                        Back to Dashboard
-                      </Link>
-                    </Button>
-                    <Button variant="outline" className="gap-2 bg-transparent" onClick={handleRegenerate}>
-                      <RefreshCw className="h-4 w-4" />
-                      Generate Another
-                    </Button>
+                  {/* Layer 2: Subject Image (Composited) */}
+                  {subjectImage && (
+                    <div 
+                      className={`absolute transition-all duration-500
+                        ${layout === 'center' ? 'bottom-0 left-1/2 h-[65%] w-[80%] -translate-x-1/2' : ''}
+                        ${layout === 'left' ? 'bottom-0 left-0 h-[70%] w-[70%]' : ''}
+                        ${layout === 'right' ? 'bottom-0 right-0 h-[70%] w-[70%]' : ''}
+                      `}
+                    >
+                      <img 
+                        src={subjectImage} 
+                        alt="Subject" 
+                        className={`h-full w-full object-cover object-top drop-shadow-2xl transition-all duration-500
+                          ${imageStyle === 'fade' ? '[mask-image:linear-gradient(to_bottom,black_50%,transparent)]' : ''}
+                          ${imageStyle === 'circle' ? 'rounded-full border-4 border-white/20' : ''}
+                        `} 
+                      />
+                    </div>
+                  )}
+
+                  {/* Layer 3: Text Overlay (Dynamic Colors & Layout) */}
+                  <div className={`absolute inset-0 flex flex-col p-8 transition-all duration-500
+                    ${layout === 'center' ? 'items-center justify-between text-center' : ''}
+                    ${layout === 'left' ? 'items-end justify-center text-right' : ''}
+                    ${layout === 'right' ? 'items-start justify-center text-left' : ''}
+                  `}>
+                    {/* Top: Logo */}
+                    <div className={`${layout === 'center' ? '' : 'absolute top-8'}`}>
+                      {logoImage && (
+                        <img src={logoImage} alt="Logo" className="h-16 w-auto object-contain drop-shadow-md" />
+                      )}
+                    </div>
+
+                    {/* Typography */}
+                    <div className="z-10">
+                      <div 
+                        className="inline-block rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest backdrop-blur-sm"
+                        style={{ 
+                          backgroundColor: extractedColors[0] || '#000', 
+                          color: '#fff' 
+                        }}
+                      >
+                        {category || "Category"}
+                      </div>
+                      <h1 
+                        className="mt-4 font-heading text-4xl font-black leading-none tracking-tight drop-shadow-xl"
+                        style={{ color: extractedColors[1] || '#fff' }}
+                      >
+                        {title || "YOUR TITLE HERE"}
+                      </h1>
+                      
+                      {(eventDate || venue) && (
+                        <div className={`mt-4 flex flex-col gap-1 text-sm font-medium text-white drop-shadow-md
+                          ${layout === 'center' ? 'items-center' : ''}
+                          ${layout === 'left' ? 'items-end' : ''}
+                          ${layout === 'right' ? 'items-start' : ''}
+                        `}>
+                          {eventDate && <span>{new Date(eventDate).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</span>}
+                          {venue && <span>{venue}</span>}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
+                  
+                  {/* Overlay Gradient for Text Readability */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none" />
+                </div>
               </CardContent>
             </Card>
           </div>
