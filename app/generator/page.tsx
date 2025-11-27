@@ -122,7 +122,7 @@ export default function GeneratorPage() {
     maxFiles: 1
   })
 
-  const canGenerate = user?.plan !== "free" || (user?.credits || 0) > 0
+  const canGenerate = user?.isAdmin || user?.plan !== "free" || (user?.credits || 0) > 0
 
   const handleGenerate = async () => {
     if (!title || !category) {

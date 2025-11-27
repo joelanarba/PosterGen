@@ -57,9 +57,9 @@ export default function DashboardPage() {
               <Zap className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{user.plan === "business" ? "Unlimited" : user.credits}</div>
+              <div className="text-2xl font-bold">{user.isAdmin || user.plan === "business" ? "Unlimited" : user.credits}</div>
               <p className="text-xs text-muted-foreground">
-                {user.plan === "free" ? "of 5 free credits" : `${planLimits[user.plan].label} plan`}
+                {user.isAdmin ? "Admin Access" : (user.plan === "free" ? "of 5 free credits" : `${planLimits[user.plan].label} plan`)}
               </p>
             </CardContent>
           </Card>
