@@ -14,8 +14,12 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { useAuth } from "@/lib/auth-context"
-import { Sparkles, Loader2, RefreshCw, Wand2, ArrowLeft, Upload, Image as ImageIcon, Palette } from "lucide-react"
+import { Sparkles, Loader2, RefreshCw, Wand2, ArrowLeft, Upload, Image as ImageIcon, Palette, Save, Download } from "lucide-react"
 import { toast } from "sonner"
+import { toPng } from "html-to-image"
+import { ref, uploadString, getDownloadURL } from "firebase/storage"
+import { collection, addDoc, serverTimestamp } from "firebase/firestore"
+import { db, storage } from "@/lib/firebase-config"
 
 const designCategories = [
   "Church Service",
@@ -56,7 +60,10 @@ export default function GeneratorPage() {
   
   // Generation State
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [generatedBackground, setGeneratedBackground] = useState<string | null>(null)
+  
+  const previewRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -189,6 +196,70 @@ export default function GeneratorPage() {
       toast.error(error.message || "Failed to generate poster")
     } finally {
       setIsGenerating(false)
+    }
+  }
+
+  const handleSave = async () => {
+    if (!generatedBackground && !subjectImage) {
+      toast.error("Nothing to save! Generate a design first.")
+      return
+    }
+
+    if (!user) {
+      toast.error("You must be logged in to save.")
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      // 1. Capture the preview as an image
+      if (!previewRef.current) throw new Error("Preview element not found")
+      
+      // Small delay to ensure rendering is complete
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      const dataUrl = await toPng(previewRef.current, {
+        cacheBust: true,
+        quality: 0.95,
+        pixelRatio: 2 // Higher quality
+      })
+
+      // 2. Upload to Firebase Storage
+      const timestamp = Date.now()
+      const storageRef = ref(storage, `posters/${user.id}/${timestamp}.png`)
+      await uploadString(storageRef, dataUrl, 'data_url')
+      const downloadUrl = await getDownloadURL(storageRef)
+
+      // 3. Save metadata to Firestore
+      await addDoc(collection(db, "posters"), {
+        userId: user.id,
+        title: title || "Untitled Poster",
+        prompt: description, // Storing description as prompt context
+        imageUrl: downloadUrl,
+        thumbnailUrl: downloadUrl, // Using same URL for now, could generate smaller one
+        size: {
+          width: 1080, // Assuming standard poster ratio for now
+          height: 1350,
+          preset: "poster"
+        },
+        style: imageStyle,
+        status: "completed",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        metadata: {
+          generationTime: Date.now(),
+          model: "poster-gen-v1"
+        }
+      })
+
+      toast.success("Poster saved successfully!")
+      router.push("/history")
+
+    } catch (error: any) {
+      console.error("Save error:", error)
+      toast.error("Failed to save poster: " + error.message)
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -420,7 +491,7 @@ export default function GeneratorPage() {
                 <CardDescription>Smart composite of your assets and AI background</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-muted shadow-2xl">
+                <div ref={previewRef} className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-muted shadow-2xl">
                   {/* Layer 1: AI Background */}
                   {generatedBackground ? (
                     <img
@@ -503,6 +574,29 @@ export default function GeneratorPage() {
                 </div>
               </CardContent>
             </Card>
+            
+            {/* Save Actions */}
+            <div className="mt-4 flex gap-4">
+              <Button 
+                size="lg" 
+                className="w-full gap-2" 
+                variant="secondary"
+                onClick={handleSave}
+                disabled={isSaving || (!generatedBackground && !subjectImage)}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-5 w-5" />
+                    Save to Gallery
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </main>
