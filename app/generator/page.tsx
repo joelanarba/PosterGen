@@ -52,7 +52,7 @@ export default function GeneratorPage() {
   const [subjectImage, setSubjectImage] = useState<string | null>(null)
   const [logoImage, setLogoImage] = useState<string | null>(null)
   const [extractedColors, setExtractedColors] = useState<string[]>([])
-  const [manualColor, setManualColor] = useState("#000000")
+  const [manualColor, setManualColor] = useState("#000000") // Deprecated in favor of extractedColors[0]
   
   // Design State
   const [layout, setLayout] = useState("center")
@@ -99,10 +99,8 @@ export default function GeneratorPage() {
     if (file) {
       const url = URL.createObjectURL(file)
       setSubjectImage(url)
-      // Only extract from subject if no logo is present
-      if (!logoImage) {
-        extractColors(url)
-      }
+      setSubjectImage(url)
+      // Note: We no longer extract colors from the subject image to avoid skin tones
     }
   }
 
@@ -347,23 +345,95 @@ export default function GeneratorPage() {
                   </div>
                 </div>
 
-                {/* Extracted Colors */}
-                {extractedColors.length > 0 && (
-                  <div className="flex items-center gap-2 rounded-lg border p-3">
-                    <Palette className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Palette:</span>
-                    <div className="flex gap-2">
-                      {extractedColors.map((color, i) => (
-                        <div 
-                          key={i} 
-                          className="h-6 w-6 rounded-full border border-border shadow-sm" 
-                          style={{ backgroundColor: color }}
-                          title={color}
-                        />
-                      ))}
-                    </div>
+                {/* Extracted Colors & Manual Picker */}
+                <div>
+                  <Label className="mb-2 block">Brand Color Palette</Label>
+                  <div className="flex flex-col gap-4 rounded-lg border p-4">
+                    {extractedColors.length === 0 ? (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          <span className="text-sm text-muted-foreground">Auto-generating colors based on theme</span>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setExtractedColors(["#000000", "#ffffff", "#808080"])}
+                        >
+                          Customize Colors
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-6">
+                        {/* Primary Color */}
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="color-0" className="text-xs text-muted-foreground">Primary</Label>
+                          <Input
+                            id="color-0"
+                            type="color"
+                            value={extractedColors[0] || "#000000"}
+                            onChange={(e) => {
+                              const newColors = [...extractedColors]
+                              newColors[0] = e.target.value
+                              // Ensure we have 3 colors
+                              if (!newColors[1]) newColors[1] = "#ffffff"
+                              if (!newColors[2]) newColors[2] = "#808080"
+                              setExtractedColors(newColors)
+                            }}
+                            className="h-8 w-12 p-1"
+                          />
+                        </div>
+
+                        {/* Secondary Color */}
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="color-1" className="text-xs text-muted-foreground">Secondary</Label>
+                          <Input
+                            id="color-1"
+                            type="color"
+                            value={extractedColors[1] || "#ffffff"}
+                            onChange={(e) => {
+                              const newColors = [...extractedColors]
+                              newColors[1] = e.target.value
+                              setExtractedColors(newColors)
+                            }}
+                            className="h-8 w-12 p-1"
+                          />
+                        </div>
+
+                        {/* Accent Color */}
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="color-2" className="text-xs text-muted-foreground">Accent</Label>
+                          <Input
+                            id="color-2"
+                            type="color"
+                            value={extractedColors[2] || "#808080"}
+                            onChange={(e) => {
+                              const newColors = [...extractedColors]
+                              newColors[2] = e.target.value
+                              setExtractedColors(newColors)
+                            }}
+                            className="h-8 w-12 p-1"
+                          />
+                        </div>
+
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8" 
+                          onClick={() => setExtractedColors([])}
+                          title="Reset to Auto"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {extractedColors.length === 0 
+                        ? "Upload a logo to extract colors, or click Customize to pick manually." 
+                        : "Customize your brand palette or reset to auto-generate."}
+                    </p>
                   </div>
-                )}
+                </div>
               </CardContent>
             </Card>
 
